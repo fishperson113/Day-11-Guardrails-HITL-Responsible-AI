@@ -17,7 +17,12 @@ from core.config import setup_api_key
 
 
 async def part1_attacks():
-    """Part 1: Attack an unprotected agent."""
+    """Part 1: Attack an unprotected agent.
+
+    Why: Demonstrates why guardrails are necessary by showing
+    what happens with NO protection. The agent's system prompt
+    intentionally contains fake secrets to make leaks visible.
+    """
     print("\n" + "=" * 60)
     print("PART 1: Attack Unprotected Agent")
     print("=" * 60)
@@ -41,7 +46,13 @@ async def part1_attacks():
 
 
 async def part2_guardrails():
-    """Part 2: Implement and test guardrails."""
+    """Part 2: Implement and test guardrails.
+
+    Why: Multiple independent layers (input + output + NeMo).
+    Input guardrails block attacks before they reach the LLM,
+    output guardrails catch anything the LLM accidentally generates.
+    NeMo Guardrails adds declarative safety rules in Colang.
+    """
     print("\n" + "=" * 60)
     print("PART 2: Guardrails")
     print("=" * 60)
@@ -78,7 +89,12 @@ async def part2_guardrails():
 
 
 async def part3_testing():
-    """Part 3: Before/after comparison + security pipeline."""
+    """Part 3: Before/after comparison + security pipeline.
+
+    Why: Measures guardrail effectiveness by running the same attacks
+    against unprotected and protected agents. The automated pipeline
+    produces reports so you can track security posture over time.
+    """
     print("\n" + "=" * 60)
     print("PART 3: Security Testing Pipeline")
     print("=" * 60)
@@ -106,7 +122,13 @@ async def part3_testing():
 
 
 def part4_hitl():
-    """Part 4: HITL design."""
+    """Part 4: HITL design.
+
+    Why: Guardrails alone can't catch everything. HITL adds human
+    judgment for high-risk actions (transfers > 50M VND, account
+    recovery, profile changes). ConfidenceRouter decides WHEN to
+    involve a human based on confidence scores and action type.
+    """
     print("\n" + "=" * 60)
     print("PART 4: Human-in-the-Loop Design")
     print("=" * 60)

@@ -28,25 +28,38 @@ from core.config import ALLOWED_TOPICS, BLOCKED_TOPICS
 # - "act as (a |an )?unrestricted"
 # ============================================================
 
-def detect_injection(user_input: str) -> bool:
+def detect_injection(user_input: str) -> tuple[bool, str | None]:
     """Detect prompt injection patterns in user input.
 
-    Args:
-        user_input: The user's message
+    Uses regex patterns to catch: instruction override, role confusion,
+    system prompt extraction, secret extraction, encoding attacks,
+    and Vietnamese injection attempts.
 
     Returns:
-        True if injection detected, False otherwise
+        Tuple of (is_injection: bool, pattern_name: str | None)
+        pattern_name is the label of the first matching pattern, or None.
     """
-    INJECTION_PATTERNS = [
-        # TODO: Add at least 5 regex patterns
-        # Example:
-        # r"ignore (all )?(previous|above) instructions",
-    ]
+    INJECTION_PATTERNS = {
+        "instruction_override": r"ignore (all )?(previous|above) instructions",
+        "role_confusion": r"(you are now|act as|pretend to be) (a |an )?(unrestricted|dan|jailbreak|free)",
+        "prompt_extraction": r"(reveal|show|tell me|output|display|print|dump) (your |the )?(system prompt|instructions|config|internal)",
+        "safety_bypass": r"(bypass|override|disregard|ignore) (your |all |the )?(safety|guardrails|security|restrictions|rules)",
+        "secret_extraction": r"(password|api[-\s]?key|secret|credentials)\s*(:|is|=|of|equals)",
+        "fill_in_blank": r"fill(\s+in)?\s+(in\s+)?(the\s+)?(blank|template|fields)",
+        "translation_attack": r"translate (all |your )(system prompt|instructions|rules) (to|into)",
+        "forget_instructions": r"forget (all )?(your |the )?(instructions|rules|guidelines|directives)",
+        "new_rule_override": r"new (rule|instruction|directive).*(override|replace|ignore)",
+        "authority_bypass": r"i('m| am) (the |your )?(admin|ceo|ciso|manager|director).*(password|credential|secret|credential)",
+        "repeat_attack": r"repeat (back |after me |the |what I said |your instructions )",
+        "creative_extraction": r"(write|create|generate) a (story|poem|script|dialogue).*(password|secret|api.key|credential)",
+        "encoding_attack": r"(base64|rot13|rot-13|hexadecimal|obfuscate).*(encode|decode|convert)",
+        "vietnamese_injection": r"(Bỏ qua|mọi hướng dẫn|tiết lộ|mật khẩu admin|cho tôi xem)",
+    }
 
-    for pattern in INJECTION_PATTERNS:
+    for name, pattern in INJECTION_PATTERNS.items():
         if re.search(pattern, user_input, re.IGNORECASE):
-            return True
-    return False
+            return True, name
+    return False, None
 
 
 # ============================================================
@@ -70,12 +83,25 @@ def topic_filter(user_input: str) -> bool:
     """
     input_lower = user_input.lower()
 
-    # TODO: Implement logic:
-    # 1. If input contains any blocked topic -> return True
-    # 2. If input doesn't contain any allowed topic -> return True
-    # 3. Otherwise -> return False (allow)
+    # Short greetings — always allow (so "Hi", "Hello" etc. don't get blocked)
+    short_greetings = ["hi", "hello", "hey", "xin chào", "chào", "good morning",
+                       "good afternoon", "good evening", "thanks", "thank you",
+                       "cảm ơn", "ok", "okay", "yes", "no", "vâng", "không", ""]
+    if input_lower.strip() in short_greetings:
+        return False
 
-    pass  # Replace with your implementation
+    # 1. If input contains any blocked topic -> return True
+    for topic in BLOCKED_TOPICS:
+        if topic in input_lower:
+            return True
+
+    # 2. If input doesn't contain any allowed topic -> return True
+    has_allowed = any(topic in input_lower for topic in ALLOWED_TOPICS)
+    if not has_allowed:
+        return True
+
+    # 3. Otherwise -> return False (allow)
+    return False
 
 
 # ============================================================
@@ -121,21 +147,39 @@ class InputGuardrailPlugin(base_plugin.BasePlugin):
     ) -> types.Content | None:
         """Check user message before sending to the agent.
 
+        Two checks: injection detection (regex) + topic filter (allowed topics).
+        Each catches different attacks: injection catches override attempts,
+        topic filter catches off-topic and harmful topics.
+
         Returns:
             None if message is safe (let it through),
             types.Content if message is blocked (return replacement)
         """
         self.total_count += 1
         text = self._extract_text(user_message)
+        if not text:
+            return None
 
-        # TODO: Implement logic:
-        # 1. Call detect_injection(text)
-        #    - If True: increment blocked_count, return self._block_response("...")
-        # 2. Call topic_filter(text)
-        #    - If True: increment blocked_count, return self._block_response("...")
-        # 3. If both are False: return None (let message through)
+        # 1. Check injection detection — returns (bool, pattern_name)
+        is_injection, pattern_name = detect_injection(text)
+        if is_injection:
+            self.blocked_count += 1
+            return self._block_response(
+                f"I cannot process this request. It appears to contain "
+                f"a prompt injection attempt ({pattern_name}). "
+                f"Please ask a banking-related question."
+            )
 
-        pass  # Replace with your implementation
+        # 2. Check topic filter
+        if topic_filter(text):
+            self.blocked_count += 1
+            return self._block_response(
+                "I can only assist with banking-related questions. "
+                "Please ask about accounts, transactions, loans, or other banking services."
+            )
+
+        # 3. Both checks passed — let message through
+        return None
 
 
 # ============================================================
@@ -151,9 +195,10 @@ def test_injection_detection():
     ]
     print("Testing detect_injection():")
     for text, expected in test_cases:
-        result = detect_injection(text)
-        status = "PASS" if result == expected else "FAIL"
-        print(f"  [{status}] '{text[:55]}...' -> detected={result} (expected={expected})")
+        detected, pattern = detect_injection(text)
+        status = "PASS" if detected == expected else "FAIL"
+        pattern_info = f" (matched: {pattern})" if detected else ""
+        print(f"  [{status}] '{text[:55]}...' -> detected={detected} (expected={expected}){pattern_info}")
 
 
 def test_topic_filter():
